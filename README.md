@@ -34,7 +34,7 @@ On a page that lists all the posts, you have links to each post - These typicall
 
 This JSON element is a list of PostLinkList objects, which have:
 - template - This is the template used for each post link
-- postsJson - This is a file containing a list of posts. See [posts.json](#posts.json) for it's format
+- postsJson - This is a file containing a list of posts. See [posts.json](#postsjson) for it's format
 
 In the template, the following replacements are made:
 - ${PostTitle} - Replaced with the post "title" from JSON
