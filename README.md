@@ -1,4 +1,6 @@
-# Static Blog Generator
+# Stagenx
+
+Simple static blog generator written in haxe. Really just some fancy copy-pasting
 
 ## blog.json
 
