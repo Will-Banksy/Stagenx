@@ -2,9 +2,31 @@
 
 Simple static blog generator written in haxe. Really just some fancy copy-pasting
 
-(Usage instructions to come)
+## Running
+
+You need haxe (I used haxe 4.2.2, may work on earlier versions though).
+
+```bash
+haxe --run Stagenx.hx <blog.json path> [output directory] [working directory]
+```
+
+The output directory and working directory are optional arguments. Output directory defaults to "output" in the current working directory. Both blog.json and output directory are affected by setting the working directory.
+
+For example:
+
+```bash
+haxe --run Stagenx.hx blog.json output ..
+```
+
+The above will read blog.json from the parent directory (../blog.json) and put the output in ../output (Creating it if it doesn't exist).
+
+The working directory also affects files references (@filepath) in blog.json and other json files. If blog.json references template-1.html and the working directory is /home/www-data, it will read /home/www-data/template-1.html
+
+(Tip: Use the Makefile so you can just type `make` instead of `haxe --run Stagenx.hx <blog.json path> [output directory] [working directory]`)
 
 ## blog.json
+
+(The filename doesn't actually have to be blog.json. Same applies to all other filenames mentioned)
 
 Structure:
 

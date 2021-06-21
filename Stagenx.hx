@@ -2,6 +2,7 @@ using StringTools;
 using sys.io.File;
 using haxe.Json;
 using String;
+using sys.FileSystem;
 
 typedef BlogSpecJson = {
 	var postLinkLists : Array<PostLinkListJson>;
@@ -33,12 +34,29 @@ typedef Post = {
 	var filename : String;
 }
 
-class Generator {
-	static var outputDir : String = "output";
+class Stagenx {
+	static var outputDir : String = "";
 
 	static public function main() {
+		if(Sys.args().length == 0) {
+			Sys.stderr().writeString("[ERROR]: Blog json file path unspecified");
+			Sys.exit(1);
+		}
+		var blogJsonPath = Sys.args()[0];
+		if(Sys.args().length > 1) {
+			outputDir = Sys.args()[1];
+		} else {
+			outputDir = "output";
+		}
+		if(Sys.args().length > 2) {
+			var workingDir = FileSystem.absolutePath(Sys.args()[2]);
+			Sys.setCwd(workingDir); // Doesn't work in java
+		}
+
+		outputDir = FileSystem.absolutePath(outputDir);
+
 		// Load the main json file
-		var blogSpec : BlogSpecJson = Json.parse(File.getContent("parts/blog.json"));
+		var blogSpec : BlogSpecJson = Json.parse(File.getContent(FileSystem.absolutePath(blogJsonPath)));
 
 		// Get all the post link lists
 		var postLinkLists : Array<PostLinkList> = [];
@@ -67,6 +85,14 @@ class Generator {
 		}
 
 		/* trace(postLinkLists); */
+
+		// Make output directory if it doesn't exist
+		if(!FileSystem.exists(outputDir)) {
+			FileSystem.createDirectory(outputDir);
+		} else if(!FileSystem.isDirectory(outputDir)) {
+			Sys.stderr().writeString("[ERROR]: Cannot create output directory " + outputDir + " - Non-directory file with that path already exists");
+			Sys.exit(1);
+		}
 
 		// Now handle each file
 		for(fileObj in blogSpec.files) {
@@ -105,7 +131,7 @@ class Generator {
 	static public function content(contentStr : String) : String {
 		// If first character is @, then the rest of the field will be the filename the content is at
 		if(contentStr.charAt(0) == "@") {
-			contentStr = File.getContent(contentStr.substring(1)); // Get the content of the file, filename starting at 2nd character
+			contentStr = File.getContent(FileSystem.absolutePath(contentStr.substring(1))); // Get the content of the file, filename starting at 2nd character
 		}
 		return contentStr;
 	}

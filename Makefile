@@ -1,2 +1,2 @@
 run:
-	haxe --main Generator.hx --interp
+	haxe --run Stagenx.hx blog.json
