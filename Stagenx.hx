@@ -102,6 +102,7 @@ class Stagenx {
 					for(post in postLinkList.posts) {
 						var filepath = outputDir + "/" + fileObj.filename.replace("${PostFilename}", post.filename);
 						var template = fileObj.template;
+						template = processIncludes(template); // Resolve includes *before* doing any other replacements, so the included files will have their content replaced too
 						template = template.replace("${PostTitle}", post.title);
 						template = template.replace("${PostDescription}", post.description);
 						template = template.replace("${PostDate}", post.date);
@@ -111,21 +112,44 @@ class Stagenx {
 						for(i in 0...postLinkLists.length) {
 							template = template.replace("${PostLinkList[" + i + "]}", postLinkLists[i].template);
 						}
-						File.saveContent(filepath, template);
+						// File.saveContent(filepath, template);
+						save(filepath, template);
 					}
 				}
 			} else if(fileObj.scope == "once") {
+				fileObj.template = processIncludes(fileObj.template); // Resolve includes *before* doing any other replacements, so the included files will have their content replaced too
 				for(i in 0...postLinkLists.length) {
 					fileObj.template = fileObj.template.replace("${PostLinkList[" + i + "]}", postLinkLists[i].template);
 				}
 				var filepath = outputDir + "/" + fileObj.filename;
-				File.saveContent(filepath, fileObj.template);
+				// File.saveContent(filepath, fileObj.template);
+				save(filepath, fileObj.template);
 			} else {
 				var filepath = outputDir + "/" + fileObj.filename;
-				File.saveContent(filepath, fileObj.template);
+				// File.saveContent(filepath, fileObj.template);
+				save(filepath, fileObj.template);
 			}
 		}
-		// TODO ... Unless it's done?
+	}
+
+	static public function processIncludes(contentStr : String) : String {
+		var i = contentStr.indexOf("${@");
+		while(i != -1) {
+			var j = contentStr.indexOf("}", i + 3); // Search for the first } after the ${@
+
+			var includePath = contentStr.substring(i + 2, j); // Pick out the include path (including the '@', so I can just stick it in content())
+
+			var replacement = content(includePath); // Use content() to read the file
+
+			processIncludes(replacement); // Resolve includes in the replacement too
+
+			var target = contentStr.substring(i, j + 1); // Get the whole ${@path} to use as a replacement target
+
+			contentStr = contentStr.replace(target, replacement); // And... replace! This has the added bonus of doing it in the whole file
+
+			i = contentStr.indexOf("${@", i + replacement.length); // Search from the position replaced. The replacement might need ${@'s that need resolving, might even start with one
+		}
+		return contentStr;
 	}
 
 	static public function content(contentStr : String) : String {
@@ -134,5 +158,11 @@ class Stagenx {
 			contentStr = File.getContent(FileSystem.absolutePath(contentStr.substring(1))); // Get the content of the file, filename starting at 2nd character
 		}
 		return contentStr;
+	}
+
+	static function save(path : String, content : String) {
+		var containDir = path.substring(0, path.lastIndexOf("/"));
+		FileSystem.createDirectory(containDir); // Create the containing directory if it does not exist
+		File.saveContent(path, content);
 	}
 }
