@@ -4,25 +4,29 @@ using haxe.Json;
 using String;
 using sys.FileSystem;
 
-typedef BlogSpecJson = {
-	var postLinkLists : Array<PostLinkListJson>;
-	var files : Array<FileObjJson>;
+typedef BlogSpec = {
+	var postCollections : Array<PostCollectionJson>;
+	var postLists : Array<PostList>;
+	var files : Array<FileObj>;
 }
 
-typedef PostLinkListJson = {
-	var template : String;
+typedef PostCollectionJson = {
 	var postsJson : String;
 }
 
-typedef FileObjJson = {
+typedef PostCollection = {
+	var posts : Array<Post>;
+}
+
+typedef PostList = {
+	var template : String;
+	var postCollectionId : Int;
+}
+
+typedef FileObj = {
 	var template : String;
 	var scope : String;
 	var filename : String;
-}
-
-typedef PostLinkList = {
-	var template : String;
-	var posts : Array<Post>;
 }
 
 typedef Post = {
@@ -34,12 +38,16 @@ typedef Post = {
 	var filename : String;
 }
 
+// TODO - Allow directories to be specified in blog.json
+
 class Stagenx {
 	static var outputDir : String = "";
 
-	static public function main() {
+	static public function main() : Void {
+		// Take arguments
 		if(Sys.args().length == 0) {
 			Sys.stderr().writeString("[ERROR]: Blog json file path unspecified");
+			// Sys.print("Usage: ") // TODO help
 			Sys.exit(1);
 		}
 		var blogJsonPath = Sys.args()[0];
@@ -50,84 +58,120 @@ class Stagenx {
 		}
 		if(Sys.args().length > 2) {
 			var workingDir = FileSystem.absolutePath(Sys.args()[2]);
-			Sys.setCwd(workingDir); // Doesn't work in java
+			Sys.setCwd(workingDir); // Set current working directory. Doesn't work in java
 		}
 
+		// Convert the relative path to absolute
 		outputDir = FileSystem.absolutePath(outputDir);
 
 		// Load the main json file
-		var blogSpec : BlogSpecJson = Json.parse(File.getContent(FileSystem.absolutePath(blogJsonPath)));
+		var blogSpec : BlogSpec = Json.parse(File.getContent(FileSystem.absolutePath(blogJsonPath)));
 
-		// Get all the post link lists
-		var postLinkLists : Array<PostLinkList> = [];
-		for(postLinkListJson in blogSpec.postLinkLists) {
-			var postLinkList : PostLinkList = { template: "", posts: [] }; // Initialise anon struct. This isn't C++ there are no default constructors for everything
-			postLinkList.template = content(postLinkListJson.template);
-			postLinkList.posts = Json.parse(content(postLinkListJson.postsJson));
-			postLinkLists.push(postLinkList);
+		// Get all the posts
+		var postCollections : Array<PostCollection> = [];
+		for(postCollectionJson in blogSpec.postCollections) {
+			var postCollectionArr : Array<Post> = Json.parse(content(postCollectionJson.postsJson));
+			var postCollection : PostCollection = { posts: postCollectionArr };
+
+			// Get the content for each post for each field. Yes it's silly to do it for each field but I canny be arsed to write what can and can't use @path, much less to make a decision on it
+			for(post in postCollection.posts) {
+				post.title = content(post.title);
+				post.description = content(post.description);
+				post.date = content(post.date);
+				post.content = content(post.content);
+				post.filename = content(post.filename);
+			}
+
+			// Append the post collection to the array
+			postCollections.push(postCollection);
 		}
 
-		// Copy the postLinkList template for each post (appending the copies to the template string) and do the replacements
-		for(postLinkList in postLinkLists) {
-			var postLinkListTemplateBuf = new StringBuf();
-			for(post in postLinkList.posts) {
-				post.content = content(post.content);
-				var template = postLinkList.template;
+		for(postList in blogSpec.postLists) {
+			postList.template = content(postList.template); // Same old, use content() for @path
+
+			// Now we need to copy the template for each post, making the necessary replacements along the way
+			// So first we'll have a buffer to hold the replaced templates
+			var postListTemplateBuf = new StringBuf();
+
+			// Now we loop through all the posts that this post list is using and make the replacements and add the template to the buffer
+			for(post in postCollections[postList.postCollectionId].posts) {
+				var template = postList.template; // Make a copy of the template to do the replacements in
 				template = template.replace("${PostTitle}", post.title);
 				template = template.replace("${PostDescription}", post.description);
 				template = template.replace("${PostDate}", post.date);
 				template = template.replace("${PostThumbnail}", post.thumbnail);
 				template = template.replace("${PostContent}", post.content);
 				template = template.replace("${PostFilename}", post.filename);
-				postLinkListTemplateBuf.add(template);
+				postListTemplateBuf.add(template);
 			}
-			postLinkList.template = postLinkListTemplateBuf.toString();
+			postList.template = postListTemplateBuf.toString();
 		}
-
-		/* trace(postLinkLists); */
 
 		// Make output directory if it doesn't exist
-		if(!FileSystem.exists(outputDir)) {
-			FileSystem.createDirectory(outputDir);
-		} else if(!FileSystem.isDirectory(outputDir)) {
-			Sys.stderr().writeString("[ERROR]: Cannot create output directory " + outputDir + " - Non-directory file with that path already exists");
-			Sys.exit(1);
-		}
+		ensureDirExists(outputDir);
 
 		// Now handle each file
 		for(fileObj in blogSpec.files) {
-			fileObj.template = content(fileObj.template);
-			if(fileObj.scope == "per-post") {
-				for(postLinkList in postLinkLists) {
-					for(post in postLinkList.posts) {
-						var filepath = outputDir + "/" + fileObj.filename.replace("${PostFilename}", post.filename);
-						var template = fileObj.template;
-						template = processIncludes(template); // Resolve includes *before* doing any other replacements, so the included files will have their content replaced too
-						template = template.replace("${PostTitle}", post.title);
-						template = template.replace("${PostDescription}", post.description);
-						template = template.replace("${PostDate}", post.date);
-						template = template.replace("${PostThumbnail}", post.thumbnail);
-						template = template.replace("${PostContent}", post.content);
-						template = template.replace("${PostFilename}", post.filename);
-						for(i in 0...postLinkLists.length) {
-							template = template.replace("${PostLinkList[" + i + "]}", postLinkLists[i].template);
-						}
-						// File.saveContent(filepath, template);
-						save(filepath, template);
+			// *Sigh* do all the silly content replacement stuff
+			fileObj.scope = content(fileObj.scope);
+			fileObj.filename = content(fileObj.filename);
+
+			// Now, fileObj.template *may* refer to a directory. In this case, we recursively read all the files in it
+			// The files keep their path (relative to the target directory), and the scope is inherited
+			if(fileObj.template.charAt(0) == '@') {
+				var filepath = fileObj.template.substring(1);
+				if(FileSystem.isDirectory(filepath)) {
+					var dirContents = FileSystem.readDirectory(filepath);
+					for(file in dirContents) {
+						blogSpec.files.push({template: "@" + filepath + "/" + file, scope: fileObj.scope, filename: fileObj.filename + "/" + file});
 					}
+					continue;
+				}
+			}
+
+			if(fileObj.scope.substr(0, 8) == "per-post") {
+				// Get the index of the post collection used
+				var postCollectionId : Int = Std.parseInt(fileObj.scope.substring(9)); // Get the string from index 9 to the end of the string. This should just be a number
+
+				fileObj.template = content(fileObj.template);
+
+				for(post in postCollections[postCollectionId].posts) {
+					var filepath = outputDir + "/" + fileObj.filename.replace("${PostFilename}", post.filename);
+					var template = fileObj.template;
+					template = processIncludes(template); // Resolve includes *before* doing any other replacements, so the included files will have their content replaced too
+					template = template.replace("${PostTitle}", post.title);
+					template = template.replace("${PostDescription}", post.description);
+					template = template.replace("${PostDate}", post.date);
+					template = template.replace("${PostThumbnail}", post.thumbnail);
+					template = template.replace("${PostContent}", post.content);
+					template = template.replace("${PostFilename}", post.filename);
+					for(i in 0...blogSpec.postLists.length) {
+						template = template.replace("${PostList[" + i + "]}", blogSpec.postLists[i].template);
+					}
+					save(filepath, template);
 				}
 			} else if(fileObj.scope == "once") {
+				fileObj.template = content(fileObj.template); // Get the content
 				fileObj.template = processIncludes(fileObj.template); // Resolve includes *before* doing any other replacements, so the included files will have their content replaced too
-				for(i in 0...postLinkLists.length) {
-					fileObj.template = fileObj.template.replace("${PostLinkList[" + i + "]}", postLinkLists[i].template);
+				for(i in 0...blogSpec.postLists.length) {
+					fileObj.template = fileObj.template.replace("${PostList[" + i + "]}", blogSpec.postLists[i].template);
 				}
 				var filepath = outputDir + "/" + fileObj.filename;
-				// File.saveContent(filepath, fileObj.template);
 				save(filepath, fileObj.template);
 			} else {
+				// No point getting the content of the file if we're not doing replacements, therefore simply don't. Copy the file instead
 				var filepath = outputDir + "/" + fileObj.filename;
-				// File.saveContent(filepath, fileObj.template);
-				save(filepath, fileObj.template);
+
+				// Make sure the target directory exists
+				var containDir = filepath.substring(0, filepath.lastIndexOf("/"));
+				ensureDirExists(containDir); // Create the containing directory if it does not exist
+
+				// Now either copy the file (if @) or write the content
+				if(fileObj.template.charAt(0) == '@') {
+					File.copy(fileObj.template.substring(1), filepath);
+				} else {
+					save(filepath, fileObj.template.substring(1));
+				}
 			}
 		}
 	}
@@ -160,9 +204,20 @@ class Stagenx {
 		return contentStr;
 	}
 
-	static function save(path : String, content : String) {
+	static public function save(path : String, content : String) : Void {
 		var containDir = path.substring(0, path.lastIndexOf("/"));
-		FileSystem.createDirectory(containDir); // Create the containing directory if it does not exist
+		ensureDirExists(containDir);
+
 		File.saveContent(path, content);
+	}
+
+	static public function ensureDirExists(path : String) : Void {
+		// Make output directory if it doesn't exist
+		if(!FileSystem.exists(path)) {
+			FileSystem.createDirectory(path);
+		} else if(!FileSystem.isDirectory(path)) {
+			Sys.stderr().writeString("[ERROR]: Cannot create directory " + path + " - Non-directory file with that path already exists. Exiting");
+			Sys.exit(1);
+		}
 	}
 }
