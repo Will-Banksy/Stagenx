@@ -23,7 +23,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
       # Sets up haxe
-      - uses: krdlab/setup-haxe@1.1.5
+      - uses: krdlab/setup-haxe@v1.1.5
         with:
           haxe-version: 4.2.2
       # Sets up nodejs
