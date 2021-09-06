@@ -1,3 +1,5 @@
+[![Build the haxe into nodejs js](https://github.com/Will-Banksy/Stagenx/actions/workflows/main.yml/badge.svg)](https://github.com/Will-Banksy/Stagenx/actions/workflows/main.yml)
+
 # Stagenx
 
 Simple static blog generator written in haxe. Really just automated copy-pasting
